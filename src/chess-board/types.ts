@@ -1,4 +1,4 @@
-type Color = "white" | "black";
+export type Color = "white" | "black";
 
 type ChessFile = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h";
 type ChessRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
@@ -51,7 +51,7 @@ class Move {
   }
 }
 
-class Square {
+export class Square {
   public readonly file: ChessFile;
   public readonly rank: ChessRank;
 
@@ -70,7 +70,7 @@ class Square {
   }
 }
 
-class ChessTile {
+export class ChessTile {
   public readonly square: Square;
   public readonly piece: Piece | undefined;
 
@@ -91,12 +91,17 @@ abstract class Piece {
     board: ChessBoard,
     startingSquare: Square
   ): Move[];
-  public abstract getSimpleName(): string;
+  public abstract getSimpleName(): PieceLetter;
+  public abstract getFileImageName(): string;
 }
 
 class Pawn extends Piece {
-  public getSimpleName(): string {
-    return this.pieceColor === "white" ? "p" : "P";
+  public getSimpleName(): PieceLetter {
+    return this.pieceColor === "white" ? "P" : "p";
+  }
+
+  public getFileImageName(): string {
+    return `${this.pieceColor}_pawn.svg`;
   }
 
   public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
@@ -376,8 +381,12 @@ class Rook extends Piece {
     return moves;
   }
 
-  public getSimpleName(): string {
-    return this.pieceColor === "white" ? "r" : "R";
+  public getSimpleName(): PieceLetter {
+    return this.pieceColor === "white" ? "R" : "r";
+  }
+
+  public getFileImageName(): string {
+    return `${this.pieceColor}_rook.svg`;
   }
 }
 
@@ -473,8 +482,11 @@ class Knight extends Piece {
       }
     }
   }
-  public getSimpleName(): string {
-    return this.pieceColor === "white" ? "n" : "N";
+  public getSimpleName(): PieceLetter {
+    return this.pieceColor === "white" ? "N" : "n";
+  }
+  public getFileImageName(): string {
+    return `${this.pieceColor}_knight.svg`;
   }
 }
 
@@ -622,12 +634,19 @@ class Bishop extends Piece {
 
     return moves;
   }
-  public getSimpleName(): string {
-    return this.pieceColor === "white" ? "b" : "B";
+  public getSimpleName(): PieceLetter {
+    return this.pieceColor === "white" ? "B" : "b";
+  }
+
+  public getFileImageName(): string {
+    return `${this.pieceColor}_bishop.svg`;
   }
 }
 
 class Queen extends Piece {
+  public getFileImageName(): string {
+    return `${this.pieceColor}_queen.svg`;
+  }
   public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
     const moves: Move[] = [];
     let topDone = false,
@@ -907,12 +926,18 @@ class Queen extends Piece {
 
     return moves;
   }
-  public getSimpleName(): string {
-    return this.pieceColor === "white" ? "q" : "Q";
+  public getSimpleName(): PieceLetter {
+    return this.pieceColor === "white" ? "Q" : "q";
   }
 }
 
-class King extends Piece {
+export class King extends Piece {
+  public canCastleKing: boolean = false;
+  public canCastleQueen: boolean = false;
+
+  public getFileImageName(): string {
+    return `${this.pieceColor}_king.svg`;
+  }
   public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
     const moves: Move[] = [];
 
@@ -1005,22 +1030,115 @@ class King extends Piece {
     }
   }
 
-  public getSimpleName(): string {
-    return this.pieceColor === "white" ? "k" : "K";
+  public getSimpleName(): PieceLetter {
+    return this.pieceColor === "white" ? "K" : "k";
   }
 }
 
-class ChessBoard {
-  private squares: ChessTile[][];
-  public readonly turn: Color;
+const piecesConstructors = {
+  p: () => new Pawn("black"),
+  n: () => new Knight("black"),
+  b: () => new Bishop("black"),
+  r: () => new Rook("black"),
+  q: () => new Queen("black"),
+  k: () => new King("black"),
+  P: () => new Pawn("white"),
+  N: () => new Knight("white"),
+  B: () => new Bishop("white"),
+  R: () => new Rook("white"),
+  Q: () => new Queen("white"),
+  K: () => new King("white"),
+};
 
-  private constructor(squares: ChessTile[][], turn: Color) {
-    this.squares = squares;
+type PieceLetter =
+  | "p"
+  | "n"
+  | "b"
+  | "r"
+  | "q"
+  | "k"
+  | "P"
+  | "N"
+  | "B"
+  | "R"
+  | "Q"
+  | "K";
+
+export class ChessBoard {
+  public readonly tiles: ChessTile[][];
+  public readonly turn: Color;
+  public readonly whiteKingPosition: ChessTile;
+  public readonly blackKingPosition: ChessTile;
+
+  private constructor(
+    tiles: ChessTile[][],
+    turn: Color,
+    whiteKingPosition: ChessTile,
+    blackKingPosition: ChessTile
+  ) {
+    this.tiles = tiles;
     this.turn = turn;
+    this.whiteKingPosition = whiteKingPosition;
+    this.blackKingPosition = blackKingPosition;
   }
 
-  public static createChessBoard(fen: string) {
-    console.log(fen);
+  public static createChessBoard(fenstring: string) {
+    let rank = 7;
+    let file = 0;
+
+    let whiteKingPosition!: ChessTile;
+    let blackKingPosition!: ChessTile;
+
+    const sections = fenstring.split(" ");
+
+    const ranks: ChessTile[][] = new Array<ChessTile[]>(8);
+    const currentRank: ChessTile[] = new Array<ChessTile>(8);
+    for (let index = 0; index < sections[0].length; index++) {
+      const current = fenstring[index];
+      if (current === "/") {
+        ranks[rank] = [...currentRank];
+        rank--;
+        file = 0;
+        continue;
+      }
+      const number = Number(current);
+      if (!Number.isNaN(number)) {
+        for (let i = 0; i < number; i++) {
+          currentRank[file + i] = new ChessTile(chessify(file + i, rank));
+        }
+        file += number;
+        continue;
+      }
+
+      const piece = piecesConstructors[current as PieceLetter]();
+      const tile = new ChessTile(chessify(file, rank), piece);
+      currentRank[file] = tile;
+      if (current === "K") whiteKingPosition = tile;
+      else if (current === "k") blackKingPosition = tile;
+      file++;
+    }
+    ranks[rank] = [...currentRank];
+
+    const turn = sections[1] === "w" ? "white" : "black";
+
+    if (sections[2] !== "-") {
+      const blackKing = blackKingPosition.piece as King;
+      const whiteKing = whiteKingPosition.piece as King;
+      for (let index = 0; index < sections[2].length; index++) {
+        const current = sections[2][index] as "q" | "k" | "Q" | "K";
+        if (current === "q") {
+          blackKing.canCastleQueen = true;
+        } else if (current === "k") {
+          blackKing.canCastleKing = true;
+        } else if (current === "Q") {
+          whiteKing.canCastleQueen = true;
+        } else if (current === "K") {
+          whiteKing.canCastleKing = true;
+        }
+      }
+    }
+
+    return new ChessBoard(ranks, turn, whiteKingPosition, blackKingPosition);
   }
 
   public getTile(square: Square) {
@@ -1032,7 +1150,11 @@ class ChessBoard {
       simple.rank >= 8
     )
       return undefined;
-    return this.squares[simple.rank][simple.file];
+    return this.tiles[simple.rank][simple.file];
+  }
+
+  public getKing(color: Color){
+    return color === "white" ? this.whiteKingPosition.piece as King : this.blackKingPosition.piece as King;
   }
 
   public makeMove(move: Move) {
@@ -1043,13 +1165,16 @@ class ChessBoard {
     console.log(move.toString());
   }
 
+  public getLegalMoves(selectedTile: ChessTile) {
+    return selectedTile.piece ? selectedTile.piece.possibleMoves(this, selectedTile.square) : [];
+  }
+
   public calculateCheckType(move: Move): CheckType {
-    console.log(move.toString());
-    return "none";
+    return move.isEnPassant ? "none" : "checkmate";
   }
 }
 
-function simplify(square: Square) {
+export function simplify(square: Square) {
   const files = {
     a: 0,
     b: 1,
@@ -1064,7 +1189,7 @@ function simplify(square: Square) {
   return { file: files[square.file], rank: square.rank - 1 };
 }
 
-function chessify(file: number, rank: number): Square {
+export function chessify(file: number, rank: number): Square {
   const files: ChessFile[] = ["a", "b", "c", "d", "e", "f", "g", "h"];
   return new Square(files[file], (rank + 1) as ChessRank);
 }

@@ -1,237 +1,71 @@
 import { useState } from "react";
-import {
-  Color,
-  ParseFEN,
-  PiecePosition,
-  ChessPosition,
-  Square,
-} from "./fen";
 import chessboardStyle from "./ChessBoard.module.css";
 import classNames from "classnames";
+import { ChessBoard, ChessTile, Color, simplify } from "./types";
+import _ from "lodash";
 
 const defaultPosition =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-interface ChessBoardProps {
+interface ChessBoardCmpProps {
   position?: string;
   view?: Color;
 }
 
-type Move = {
-  startPosition: PiecePosition;
-  endPosition: PiecePosition;
-};
-
-const legalFunctions = {
-  pawn(move: Move, board: ChessPosition) {
-    if (!move.startPosition.piece) return false;
-    const startSquare = move.startPosition.square;
-    const endSquare = move.endPosition.square;
-    const fileDifference = Math.abs(startSquare.file - endSquare.file);
-    if (fileDifference > 1) return false;
-
-    const pieceColor = move.startPosition.piece.pieceColor;
-    const rankDifference =
-      pieceColor === "white"
-        ? endSquare.rank - startSquare.rank
-        : startSquare.rank - endSquare.rank;
-    if (rankDifference > 2 || rankDifference <= 0) return false;
-    if (
-      rankDifference === 2 &&
-      (startSquare.rank !== (pieceColor === "white" ? 2 : 7) ||
-        fileDifference === 1)
-    ) {
-      return false;
-    }
-
-    if (fileDifference === 0) {
-      return move.endPosition.piece === null;
-    }
-    if (move.endPosition.piece !== null) {
-      return true;
-    }
-    const pawnCheckSquare: Square = {
-      rank: pieceColor === "white" ? endSquare.rank - 1 : endSquare.rank + 1,
-      file: endSquare.file,
-    };
-    const pawnCheck =
-      board.board[pawnCheckSquare.rank - 1][pawnCheckSquare.file - 1].piece;
-
-    if (
-      !pawnCheck ||
-      pawnCheck.pieceType.name !== "pawn" ||
-      pawnCheck.pieceColor === pieceColor
-    )
-      return false;
-    return pawnCheck.pieceType.doubleStep;
-  },
-  knight(move: Move) {
-    const startSquare = move.startPosition.square;
-    const endSquare = move.endPosition.square;
-    const fileDifference = Math.abs(startSquare.file - endSquare.file);
-    const rankDifference = Math.abs(startSquare.rank - endSquare.rank);
-    return (
-      (fileDifference === 2 && rankDifference === 1) ||
-      (fileDifference === 1 && rankDifference === 2)
-    );
-  },
-  bishop(move: Move, board: ChessPosition) {
-    const startSquare = move.startPosition.square;
-    const endSquare = move.endPosition.square;
-    const fileDifference = Math.abs(startSquare.file - endSquare.file);
-    const rankDifference = Math.abs(startSquare.rank - endSquare.rank);
-    if (fileDifference !== rankDifference) return false;
-    const increasingRank = startSquare.rank < endSquare.rank;
-    const increasingFile = startSquare.file < endSquare.file;
-    for (let i = 1; i < rankDifference; i++) {
-      const currentRank = increasingRank
-        ? startSquare.rank + i
-        : startSquare.rank - i;
-      const currentFile = increasingFile
-        ? startSquare.file + i
-        : startSquare.file - i;
-      if (board.board[currentRank - 1][currentFile - 1].piece) return false;
-    }
-    return true;
-  },
-  rook(move: Move, board: ChessPosition) {
-    const startSquare = move.startPosition.square;
-    const endSquare = move.endPosition.square;
-    const fileDifference = Math.abs(startSquare.file - endSquare.file);
-    const rankDifference = Math.abs(startSquare.rank - endSquare.rank);
-    if (fileDifference * rankDifference !== 0) return false;
-    if (fileDifference === 0) {
-      const increasingRank = startSquare.rank < endSquare.rank;
-      for (let i = 1; i < rankDifference; i++) {
-        const currentRank = increasingRank
-          ? startSquare.rank + i
-          : startSquare.rank - i;
-        if (board.board[currentRank - 1][startSquare.file - 1].piece)
-          return false;
-      }
-    } else {
-      const increasingFile = startSquare.file < endSquare.file;
-      for (let i = 1; i < fileDifference; i++) {
-        const currentFile = increasingFile
-          ? startSquare.file + i
-          : startSquare.file - i;
-        if (board.board[startSquare.rank - 1][currentFile - 1].piece)
-          return false;
-      }
-    }
-    return true;
-  },
-  queen(move: Move, board: ChessPosition) {
-    return this.rook(move, board) || this.bishop(move, board);
-  },
-  king(move: Move) {
-    const startSquare = move.startPosition.square;
-    const endSquare = move.endPosition.square;
-    const fileDifference = Math.abs(startSquare.file - endSquare.file);
-    const rankDifference = Math.abs(startSquare.rank - endSquare.rank);
-    return Math.max(fileDifference, rankDifference) === 1;
-  },
-};
-
-function isCastles(move: Move, chessPosition: ChessPosition) {
-  const startPiece = move.startPosition.piece?.pieceType.name;
-  const endPiece = move.endPosition.piece?.pieceType.name;
-  if(!(startPiece === "rook" && endPiece === "king" || startPiece === "king" || endPiece === "rook"))
-    return false;
-
-  const turn = chessPosition.turn;
-  if (turn === "white") {
-    return false;
-  } else {
-    return false;
-  }
-}
-
-function isLegal(move: Move, chessPosition: ChessPosition) {
-  if (!move.startPosition.piece) return false;
-  if (
-    move.endPosition.piece &&
-    move.startPosition.piece.pieceColor === move.endPosition.piece.pieceColor &&
-    !isCastles(move, chessPosition)
-  )
-    return false;
-
-  return legalFunctions[move.startPosition.piece.pieceType.name](
-    move,
-    chessPosition
+export function ChessBoardCmp(props: ChessBoardCmpProps) {
+  const fenstring = props.position ?? defaultPosition;
+  const [chessPosition, setChessPosition] = useState(
+    ChessBoard.createChessBoard(fenstring)
   );
-}
 
-let lastMove: Move;
-
-export function ChessBoard(props: ChessBoardProps) {
-  const fenPosition = props.position ?? defaultPosition;
-  const [chessPosition, setChessPosition] = useState(ParseFEN(fenPosition));
   const [currentSelectedPosition, setCurrentSelectedPosition] = useState<
-    PiecePosition | undefined
+    ChessTile | undefined
   >(undefined);
+
+  const selectedLegalMoves =
+    currentSelectedPosition &&
+    chessPosition.getLegalMoves(currentSelectedPosition);
 
   const className = classNames(
     chessboardStyle.chessboard,
     chessboardStyle[`${props.view ?? chessPosition.turn}-view`]
   );
 
-  function onTileClicked(position: PiecePosition) {
+  function onTileClicked(clickedTile: ChessTile) {
     if (currentSelectedPosition) {
-      if (currentSelectedPosition.square === position.square) return;
-
-      move({ startPosition: currentSelectedPosition, endPosition: position });
-      setCurrentSelectedPosition(undefined);
+      if (
+        selectedLegalMoves?.find(
+          (move) => _.isEqual(move.targetSquare, clickedTile.square)
+        )
+      ) {
+        // move({ startPosition: currentSelectedPosition, endPosition: position });
+        setCurrentSelectedPosition(undefined);
+      } else {
+        setCurrentSelectedPosition(clickedTile);
+      }
     } else if (
-      position.piece &&
-      position.piece.pieceColor === chessPosition.turn
+      clickedTile.piece &&
+      clickedTile.piece.pieceColor === chessPosition.turn
     ) {
-      setCurrentSelectedPosition(position);
+      setCurrentSelectedPosition(clickedTile);
     }
-  }
-
-  function move(move: Move) {
-    if (!isLegal(move, chessPosition)) return;
-
-    const { startPosition, endPosition } = move;
-    if (
-      startPosition.piece?.pieceType.name === "pawn" &&
-      Math.abs(startPosition.square.rank - endPosition.square.rank) > 1
-    ) {
-      startPosition.piece.pieceType.doubleStep = true;
-    } else if (
-      startPosition.piece?.pieceType.name === "pawn" &&
-      startPosition.square.file !== endPosition.square.file &&
-      endPosition.piece === null
-    ) {
-      chessPosition.board[
-        endPosition.square.rank +
-          (startPosition.piece.pieceColor === "white" ? -1 : 1) -
-          1
-      ][endPosition.square.file - 1].piece = null;
-    }
-    endPosition.piece = startPosition.piece;
-    startPosition.piece = null;
-
-    if (lastMove && lastMove.endPosition.piece?.pieceType.name === "pawn")
-      lastMove.endPosition.piece.pieceType.doubleStep = false;
-    lastMove = move;
-
-    setChessPosition((oldPosition) => ({
-      ...oldPosition,
-      turn: oldPosition.turn === "white" ? "black" : "white",
-    }));
   }
 
   return (
     <div className={className}>
-      {chessPosition.board.map((rank, rankIndex) => (
+      {chessPosition.tiles.map((rank, rankIndex) => (
         <div className={chessboardStyle.rank} key={rankIndex}>
           {rank.map((piece, pieceIndex) => (
-            <ChessTile
+            <ChessTileCmp
               key={pieceIndex}
-              piecePosition={piece}
-              selectedPiece={currentSelectedPosition}
+              chessTile={piece}
+              isSelected={currentSelectedPosition === piece}
+              isLegal={
+                selectedLegalMoves !== undefined &&
+                selectedLegalMoves.findIndex(
+                  (move) => _.isEqual(move.targetSquare, piece.square)
+                ) !== -1
+              }
               clickCallback={onTileClicked}
               currentChessPosition={chessPosition}
             />
@@ -242,40 +76,38 @@ export function ChessBoard(props: ChessBoardProps) {
   );
 }
 
-interface ChessTileProps {
-  piecePosition: PiecePosition;
-  clickCallback: (position: PiecePosition) => void;
-  selectedPiece?: PiecePosition;
-  currentChessPosition: ChessPosition;
+interface ChessTileCmpProps {
+  chessTile: ChessTile;
+  clickCallback: (position: ChessTile) => void;
+  isSelected: boolean;
+  isLegal: boolean;
+  currentChessPosition: ChessBoard;
 }
 
-function ChessTile(props: ChessTileProps) {
-  const { piecePosition, clickCallback, selectedPiece, currentChessPosition } =
-    props;
+function ChessTileCmp(props: ChessTileCmpProps) {
+  const { chessTile, clickCallback, isSelected, isLegal } = props;
 
-  const even = (piecePosition.square.file + piecePosition.square.rank) % 2 == 0;
+  const simple = simplify(chessTile.square);
+  const even = (simple.file + simple.rank) % 2 == 0;
 
   const className = classNames(
     chessboardStyle.chesstile,
     even ? chessboardStyle.even : chessboardStyle.odd,
-    piecePosition.piece && chessboardStyle.piece
+    chessTile.piece && chessboardStyle.piece,
+    isSelected && chessboardStyle.selected
   );
 
-  const img = piecePosition.piece && (
+  const img = chessTile.piece && (
     <img
-      src={`pieces/${piecePosition.piece.pieceColor}_${piecePosition.piece.pieceType.name}.svg`}
+      src={`pieces/${chessTile.piece.getFileImageName()}`}
       draggable={false}
     />
   );
 
   return (
-    <span className={className} onClick={() => clickCallback(piecePosition)}>
+    <span className={className} onClick={() => clickCallback(chessTile)}>
       {img}
-      {selectedPiece &&
-        isLegal(
-          { startPosition: selectedPiece, endPosition: piecePosition },
-          currentChessPosition
-        ) && <span className={chessboardStyle.legalmove} />}
+      {isLegal && <span className={chessboardStyle.legalmove} />}
     </span>
   );
 }
