@@ -145,14 +145,16 @@ class Pawn extends Piece {
 
 class ChessBoard {
   private squares: ChessTile[][];
-  private turn: Color;
+  public readonly turn: Color;
 
   private constructor(squares: ChessTile[][], turn: Color) {
     this.squares = squares;
     this.turn = turn;
   }
 
-  public static createChessBoard(fen: string) {}
+  public static createChessBoard(fen: string) {
+    console.log(fen);
+  }
 
   public getSquare(square: Square) {
     const simple = simplify(square);
@@ -162,14 +164,15 @@ class ChessBoard {
   }
 
   public makeMove(move: Move){
-
+    console.log(move.toString());
   }
 
   public undoMove(move: Move){
-
+    console.log(move.toString());
   }
 
   public calculateCheckType(move: Move) : CheckType {
+    console.log(move.toString());
     return "none";
   }
 }

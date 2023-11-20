@@ -5,7 +5,6 @@ import {
   PiecePosition,
   ChessPosition,
   Square,
-  Pawn,
 } from "./fen";
 import chessboardStyle from "./ChessBoard.module.css";
 import classNames from "classnames";
@@ -133,14 +132,6 @@ const legalFunctions = {
     return Math.max(fileDifference, rankDifference) === 1;
   },
 };
-
-function isInCheck(
-  square: Square,
-  color: Color,
-  chessPosition: ChessPosition
-) {
-  return false;
-}
 
 function isCastles(move: Move, chessPosition: ChessPosition) {
   const startPiece = move.startPosition.piece?.pieceType.name;
@@ -272,7 +263,7 @@ function ChessTile(props: ChessTileProps) {
 
   const img = piecePosition.piece && (
     <img
-      src={`src/assets/pieces/${piecePosition.piece.pieceColor}_${piecePosition.piece.pieceType.name}.svg`}
+      src={`pieces/${piecePosition.piece.pieceColor}_${piecePosition.piece.pieceType.name}.svg`}
       draggable={false}
     />
   );
