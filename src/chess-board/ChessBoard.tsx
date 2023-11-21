@@ -1,8 +1,9 @@
 import { useState } from "react";
 import chessboardStyle from "./ChessBoard.module.css";
 import classNames from "classnames";
-import { ChessBoard, ChessTile, Color, simplify } from "./types";
+import { ChessBoard, ChessTile, Color, Square } from "./types";
 import _ from "lodash";
+import useForceUpdate from "../utils/useForceUpdate";
 
 const defaultPosition =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -14,9 +15,11 @@ interface ChessBoardCmpProps {
 
 export function ChessBoardCmp(props: ChessBoardCmpProps) {
   const fenstring = props.position ?? defaultPosition;
-  const [chessPosition, setChessPosition] = useState(
+  const [board] = useState(() =>
     ChessBoard.createChessBoard(fenstring)
   );
+
+  const forceUpdate = useForceUpdate();
 
   const [currentSelectedPosition, setCurrentSelectedPosition] = useState<
     ChessTile | undefined
@@ -24,36 +27,39 @@ export function ChessBoardCmp(props: ChessBoardCmpProps) {
 
   const selectedLegalMoves =
     currentSelectedPosition &&
-    chessPosition.getLegalMoves(currentSelectedPosition);
+    board.getLegalMoves(currentSelectedPosition);
 
   const className = classNames(
     chessboardStyle.chessboard,
-    chessboardStyle[`${props.view ?? chessPosition.turn}-view`]
+    chessboardStyle[`${props.view ?? board.turn}-view`]
   );
 
   function onTileClicked(clickedTile: ChessTile) {
-    if (currentSelectedPosition) {
-      if (
-        selectedLegalMoves?.find(
-          (move) => _.isEqual(move.targetSquare, clickedTile.square)
-        )
-      ) {
-        // move({ startPosition: currentSelectedPosition, endPosition: position });
-        setCurrentSelectedPosition(undefined);
-      } else {
-        setCurrentSelectedPosition(clickedTile);
-      }
+    if (
+      currentSelectedPosition &&
+      selectedLegalMoves?.find((move) =>
+        _.isEqual(move.targetSquare, clickedTile.square)
+      )
+    ) {
+      makeMove(clickedTile);
+      setCurrentSelectedPosition(undefined);
     } else if (
       clickedTile.piece &&
-      clickedTile.piece.pieceColor === chessPosition.turn
+      clickedTile.piece.pieceColor === board.turn
     ) {
       setCurrentSelectedPosition(clickedTile);
     }
   }
 
+  function makeMove(targetTile: ChessTile){
+    const move = selectedLegalMoves!.find(move => _.isEqual(move.targetSquare, targetTile.square))!;
+    board.makeMove(move);
+    forceUpdate();
+  }
+
   return (
     <div className={className}>
-      {chessPosition.tiles.map((rank, rankIndex) => (
+      {board.tiles.map((rank, rankIndex) => (
         <div className={chessboardStyle.rank} key={rankIndex}>
           {rank.map((piece, pieceIndex) => (
             <ChessTileCmp
@@ -62,12 +68,12 @@ export function ChessBoardCmp(props: ChessBoardCmpProps) {
               isSelected={currentSelectedPosition === piece}
               isLegal={
                 selectedLegalMoves !== undefined &&
-                selectedLegalMoves.findIndex(
-                  (move) => _.isEqual(move.targetSquare, piece.square)
+                selectedLegalMoves.findIndex((move) =>
+                  _.isEqual(move.targetSquare, piece.square)
                 ) !== -1
               }
               clickCallback={onTileClicked}
-              currentChessPosition={chessPosition}
+              currentChessPosition={board}
             />
           ))}
         </div>
@@ -87,7 +93,7 @@ interface ChessTileCmpProps {
 function ChessTileCmp(props: ChessTileCmpProps) {
   const { chessTile, clickCallback, isSelected, isLegal } = props;
 
-  const simple = simplify(chessTile.square);
+  const simple = Square.simplify(chessTile.square);
   const even = (simple.file + simple.rank) % 2 == 0;
 
   const className = classNames(

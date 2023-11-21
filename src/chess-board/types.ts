@@ -52,27 +52,54 @@ class Move {
 }
 
 export class Square {
-  public readonly file: ChessFile;
-  public readonly rank: ChessRank;
+  public readonly file?: ChessFile;
+  public readonly rank?: ChessRank;
 
-  constructor(file: ChessFile, rank: ChessRank) {
+  constructor(file?: ChessFile, rank?: ChessRank) {
     this.file = file;
     this.rank = rank;
   }
 
   public add(fileAdd: number, rankAdd: number) {
-    const simple = simplify(this);
-    return chessify(simple.file + fileAdd, simple.rank + rankAdd);
+    const simple = Square.simplify(this);
+    return Square.chessify(simple.file + fileAdd, simple.rank + rankAdd);
   }
 
   public toString() {
     return `${this.file}${this.rank}`;
   }
+
+  public isValid() {
+    return this.file !== undefined && this.rank !== undefined;
+  }
+
+  static simplify(square: Square) {
+    if (!square.isValid()) return { file: -1, rank: -1 };
+
+    const files = {
+      a: 0,
+      b: 1,
+      c: 2,
+      d: 3,
+      e: 4,
+      f: 5,
+      g: 6,
+      h: 7,
+    };
+
+    return { file: files[square.file!], rank: square.rank! - 1 };
+  }
+
+  static chessify(file: number, rank: number): Square {
+    if (file < 0 || file >= 8 || rank < 0 || rank >= 8) return new Square();
+    const files: ChessFile[] = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    return new Square(files[file], (rank + 1) as ChessRank);
+  }
 }
 
 export class ChessTile {
   public readonly square: Square;
-  public readonly piece: Piece | undefined;
+  public piece: Piece | undefined;
 
   public constructor(square: Square, piece?: Piece) {
     this.square = square;
@@ -93,6 +120,47 @@ abstract class Piece {
   ): Move[];
   public abstract getSimpleName(): PieceLetter;
   public abstract getFileImageName(): string;
+  protected checkAndAdd(
+    board: ChessBoard,
+    startingSquare: Square,
+    targetSquare: Square,
+    moves: Move[]
+  ) {
+    if (!targetSquare.isValid()) return undefined;
+
+    const tile = board.getTile(targetSquare)!;
+
+    if (!tile.piece) {
+      const move = new Move(
+        board,
+        startingSquare,
+        targetSquare,
+        this,
+        false,
+        false,
+        false
+      );
+      moves.push(move);
+
+      return move;
+    }
+
+    if (tile.piece.pieceColor === this.pieceColor) return undefined;
+
+    const move = new Move(
+      board,
+      startingSquare,
+      targetSquare,
+      this,
+      true,
+      false,
+      false,
+      tile.piece
+    );
+    moves.push(move);
+
+    return move;
+  }
 }
 
 class Pawn extends Piece {
@@ -104,128 +172,121 @@ class Pawn extends Piece {
     return `${this.pieceColor}_pawn.svg`;
   }
 
+  private checkAndAddDiagonal(
+    board: ChessBoard,
+    startingSquare: Square,
+    targetSquare: Square,
+    moves: Move[]
+  ) {
+    if (!targetSquare.isValid()) return;
+
+    const piece = board.getTile(targetSquare)!.piece;
+    if (!piece) return;
+
+    if (piece.pieceColor === this.pieceColor) return;
+
+    moves.push(
+      new Move(
+        board,
+        startingSquare,
+        targetSquare,
+        this,
+        true,
+        false,
+        false,
+        piece
+      )
+    );
+  }
+
+  protected checkAndAdd(
+    board: ChessBoard,
+    startingSquare: Square,
+    targetSquare: Square,
+    moves: Move[]
+  ): Move | undefined {
+    if (!targetSquare.isValid()) return undefined;
+
+    const tile = board.getTile(targetSquare)!;
+
+    if (!tile.piece) {
+      const move = new Move(
+        board,
+        startingSquare,
+        targetSquare,
+        this,
+        false,
+        false,
+        false
+      );
+      moves.push(move);
+
+      return move;
+    }
+
+    return undefined;
+  }
+
   public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
     const moves: Move[] = [];
     if (this.pieceColor === "white") {
-      if (!board.getTile(startingSquare.add(0, 1))?.piece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            startingSquare.add(0, 1),
-            this,
-            false,
-            false,
-            false
-          )
-        );
-        if (
-          startingSquare.rank === 2 &&
-          !board.getTile(startingSquare.add(0, 2))?.piece
-        ) {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(0, 2),
-              this,
-              false,
-              false,
-              false
-            )
-          );
-        }
-      }
-      const rightPiece = board.getTile(startingSquare.add(1, 1))?.piece;
-      if (rightPiece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            startingSquare.add(1, 1),
-            this,
-            false,
-            false,
-            false,
-            rightPiece
-          )
+      if (
+        this.checkAndAdd(
+          board,
+          startingSquare,
+          startingSquare.add(0, 1),
+          moves
+        ) &&
+        startingSquare.rank === 2
+      ) {
+        this.checkAndAdd(
+          board,
+          startingSquare,
+          startingSquare.add(0, 2),
+          moves
         );
       }
-      const leftPiece = board.getTile(startingSquare.add(-1, 1))?.piece;
-      if (board.getTile(startingSquare.add(-1, 1))?.piece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            startingSquare.add(-1, 1),
-            this,
-            false,
-            false,
-            false,
-            leftPiece
-          )
-        );
-      }
+      this.checkAndAddDiagonal(
+        board,
+        startingSquare,
+        startingSquare.add(1, 1),
+        moves
+      );
+      this.checkAndAddDiagonal(
+        board,
+        startingSquare,
+        startingSquare.add(-1, 1),
+        moves
+      );
     } else {
-      if (!board.getTile(startingSquare.add(0, -1))?.piece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            startingSquare.add(0, -1),
-            this,
-            false,
-            false,
-            false
-          )
-        );
-        if (
-          startingSquare.rank === 2 &&
-          !board.getTile(startingSquare.add(0, -2))?.piece
-        ) {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(0, -2),
-              this,
-              false,
-              false,
-              false
-            )
-          );
-        }
-      }
-      const rightPiece = board.getTile(startingSquare.add(1, -1))?.piece;
-      if (board.getTile(startingSquare.add(1, -1))?.piece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            startingSquare.add(1, -1),
-            this,
-            false,
-            false,
-            false,
-            rightPiece
-          )
+      if (
+        this.checkAndAdd(
+          board,
+          startingSquare,
+          startingSquare.add(0, -1),
+          moves
+        ) &&
+        startingSquare.rank === 7
+      ) {
+        this.checkAndAdd(
+          board,
+          startingSquare,
+          startingSquare.add(0, -2),
+          moves
         );
       }
-      const leftPiece = board.getTile(startingSquare.add(-1, -1))?.piece;
-      if (board.getTile(startingSquare.add(-1, -1))?.piece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            startingSquare.add(-1, -1),
-            this,
-            false,
-            false,
-            false,
-            leftPiece
-          )
-        );
-      }
+      this.checkAndAddDiagonal(
+        board,
+        startingSquare,
+        startingSquare.add(1, -1),
+        moves
+      );
+      this.checkAndAddDiagonal(
+        board,
+        startingSquare,
+        startingSquare.add(-1, -1),
+        moves
+      );
     }
 
     // TODO: en passant
@@ -243,136 +304,24 @@ class Rook extends Piece {
       leftDone = false;
     for (let i = 1; i < 8; i++) {
       if (!topDone) {
-        const top = board.getTile(startingSquare.add(0, i));
-        if (top && top.piece) {
-          if (top.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(0, i),
-                this,
-                true,
-                false,
-                false,
-                top.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, i), moves);
+        if(!newMove || newMove.isCapture)
           topDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(0, i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!bottomDone) {
-        const bottom = board.getTile(startingSquare.add(0, -i));
-        if (bottom && bottom.piece) {
-          if (bottom.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(0, -i),
-                this,
-                true,
-                false,
-                false,
-                bottom.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, -i), moves);
+        if(!newMove || newMove.isCapture)
           bottomDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(0, -i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!rightDone) {
-        const right = board.getTile(startingSquare.add(i, 0));
-        if (right && right.piece) {
-          if (right.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(i, 0),
-                this,
-                true,
-                false,
-                false,
-                right.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, 0), moves);
+        if(!newMove || newMove.isCapture)
           rightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(i, 0),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!leftDone) {
-        const left = board.getTile(startingSquare.add(-i, 0));
-        if (left && left.piece) {
-          if (left.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(-i, 0),
-                this,
-                true,
-                false,
-                false,
-                left.piece
-              )
-            );
-          }
-
-          topDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(-i, 0),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, 0), moves);
+        if(!newMove || newMove.isCapture)
+          leftDone = true;
       }
     }
 
@@ -394,49 +343,49 @@ class Knight extends Piece {
   public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
     const moves: Move[] = [];
 
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(1, 2),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(-1, 2),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(1, -2),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(-1, -2),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(2, 1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(2, -1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(-2, 1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(-2, -1),
@@ -444,43 +393,6 @@ class Knight extends Piece {
     );
 
     return moves;
-  }
-
-  checkAndAddMove(
-    board: ChessBoard,
-    startingSquare: Square,
-    targetSquare: Square,
-    moves: Move[]
-  ) {
-    const current = board.getTile(startingSquare.add(1, 2));
-    if (current) {
-      if (!current.piece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            targetSquare,
-            this,
-            false,
-            false,
-            false
-          )
-        );
-      } else {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            targetSquare,
-            this,
-            true,
-            false,
-            false,
-            current.piece
-          )
-        );
-      }
-    }
   }
   public getSimpleName(): PieceLetter {
     return this.pieceColor === "white" ? "N" : "n";
@@ -499,136 +411,24 @@ class Bishop extends Piece {
       topLeftDone = false;
     for (let i = 1; i < 8; i++) {
       if (!topRightDone) {
-        const top = board.getTile(startingSquare.add(i, i));
-        if (top && top.piece) {
-          if (top.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(i, i),
-                this,
-                true,
-                false,
-                false,
-                top.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, i), moves);
+        if(!newMove || newMove.isCapture)
           topRightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(i, i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
-      }
-      if (!bottomLeftDone) {
-        const bottom = board.getTile(startingSquare.add(-i, -i));
-        if (bottom && bottom.piece) {
-          if (bottom.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(-i, -i),
-                this,
-                true,
-                false,
-                false,
-                bottom.piece
-              )
-            );
-          }
-
-          bottomLeftDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(-i, -i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!bottomRightDone) {
-        const right = board.getTile(startingSquare.add(i, -i));
-        if (right && right.piece) {
-          if (right.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(i, -i),
-                this,
-                true,
-                false,
-                false,
-                right.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, -i), moves);
+        if(!newMove || newMove.isCapture)
           bottomRightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(i, -i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!topLeftDone) {
-        const left = board.getTile(startingSquare.add(-i, i));
-        if (left && left.piece) {
-          if (left.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(-i, i),
-                this,
-                true,
-                false,
-                false,
-                left.piece
-              )
-            );
-          }
-
-          topRightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(-i, i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, i), moves);
+        if(!newMove || newMove.isCapture)
+          topLeftDone = true;
+      }
+      if (!bottomLeftDone) {
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, -i), moves);
+        if(!newMove || newMove.isCapture)
+          bottomLeftDone = true;
       }
     }
 
@@ -659,268 +459,44 @@ class Queen extends Piece {
       topLeftDone = false;
     for (let i = 1; i < 8; i++) {
       if (!topDone) {
-        const top = board.getTile(startingSquare.add(0, i));
-        if (top && top.piece) {
-          if (top.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(0, i),
-                this,
-                true,
-                false,
-                false,
-                top.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, i), moves);
+        if(!newMove || newMove.isCapture)
           topDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(0, i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!bottomDone) {
-        const bottom = board.getTile(startingSquare.add(0, -i));
-        if (bottom && bottom.piece) {
-          if (bottom.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(0, -i),
-                this,
-                true,
-                false,
-                false,
-                bottom.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, -i), moves);
+        if(!newMove || newMove.isCapture)
           bottomDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(0, -i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!rightDone) {
-        const right = board.getTile(startingSquare.add(i, 0));
-        if (right && right.piece) {
-          if (right.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(i, 0),
-                this,
-                true,
-                false,
-                false,
-                right.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, 0), moves);
+        if(!newMove || newMove.isCapture)
           rightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(i, 0),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!leftDone) {
-        const left = board.getTile(startingSquare.add(-i, 0));
-        if (left && left.piece) {
-          if (left.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(-i, 0),
-                this,
-                true,
-                false,
-                false,
-                left.piece
-              )
-            );
-          }
-
-          topDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(-i, 0),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, 0), moves);
+        if(!newMove || newMove.isCapture)
+          leftDone = true;
       }
       if (!topRightDone) {
-        const top = board.getTile(startingSquare.add(i, i));
-        if (top && top.piece) {
-          if (top.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(i, i),
-                this,
-                true,
-                false,
-                false,
-                top.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, i), moves);
+        if(!newMove || newMove.isCapture)
           topRightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(i, i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
-      }
-      if (!bottomLeftDone) {
-        const bottom = board.getTile(startingSquare.add(-i, -i));
-        if (bottom && bottom.piece) {
-          if (bottom.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(-i, -i),
-                this,
-                true,
-                false,
-                false,
-                bottom.piece
-              )
-            );
-          }
-
-          bottomLeftDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(-i, -i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!bottomRightDone) {
-        const right = board.getTile(startingSquare.add(i, -i));
-        if (right && right.piece) {
-          if (right.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(i, -i),
-                this,
-                true,
-                false,
-                false,
-                right.piece
-              )
-            );
-          }
-
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, -i), moves);
+        if(!newMove || newMove.isCapture)
           bottomRightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(i, -i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
       }
       if (!topLeftDone) {
-        const left = board.getTile(startingSquare.add(-i, i));
-        if (left && left.piece) {
-          if (left.piece.pieceColor !== this.pieceColor) {
-            moves.push(
-              new Move(
-                board,
-                startingSquare,
-                startingSquare.add(-i, i),
-                this,
-                true,
-                false,
-                false,
-                left.piece
-              )
-            );
-          }
-
-          topRightDone = true;
-        } else {
-          moves.push(
-            new Move(
-              board,
-              startingSquare,
-              startingSquare.add(-i, i),
-              this,
-              true,
-              false,
-              false
-            )
-          );
-        }
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, i), moves);
+        if(!newMove || newMove.isCapture)
+          topLeftDone = true;
+      }
+      if (!bottomLeftDone) {
+        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, -i), moves);
+        if(!newMove || newMove.isCapture)
+          bottomLeftDone = true;
       }
     }
 
@@ -941,49 +517,49 @@ export class King extends Piece {
   public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
     const moves: Move[] = [];
 
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(-1, -1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(-1, 0),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(-1, 1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(0, -1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(0, 1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(1, -1),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(1, 0),
       moves
     );
-    this.checkAndAddMove(
+    this.checkAndAdd(
       board,
       startingSquare,
       startingSquare.add(1, 1),
@@ -991,43 +567,6 @@ export class King extends Piece {
     );
 
     return moves;
-  }
-
-  checkAndAddMove(
-    board: ChessBoard,
-    startingSquare: Square,
-    targetSquare: Square,
-    moves: Move[]
-  ) {
-    const current = board.getTile(startingSquare.add(1, 2));
-    if (current) {
-      if (!current.piece) {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            targetSquare,
-            this,
-            false,
-            false,
-            false
-          )
-        );
-      } else {
-        moves.push(
-          new Move(
-            board,
-            startingSquare,
-            targetSquare,
-            this,
-            true,
-            false,
-            false,
-            current.piece
-          )
-        );
-      }
-    }
   }
 
   public getSimpleName(): PieceLetter {
@@ -1066,7 +605,7 @@ type PieceLetter =
 
 export class ChessBoard {
   public readonly tiles: ChessTile[][];
-  public readonly turn: Color;
+  public turn: Color;
   public readonly whiteKingPosition: ChessTile;
   public readonly blackKingPosition: ChessTile;
 
@@ -1104,14 +643,16 @@ export class ChessBoard {
       const number = Number(current);
       if (!Number.isNaN(number)) {
         for (let i = 0; i < number; i++) {
-          currentRank[file + i] = new ChessTile(chessify(file + i, rank));
+          currentRank[file + i] = new ChessTile(
+            Square.chessify(file + i, rank)
+          );
         }
         file += number;
         continue;
       }
 
       const piece = piecesConstructors[current as PieceLetter]();
-      const tile = new ChessTile(chessify(file, rank), piece);
+      const tile = new ChessTile(Square.chessify(file, rank), piece);
       currentRank[file] = tile;
       if (current === "K") whiteKingPosition = tile;
       else if (current === "k") blackKingPosition = tile;
@@ -1142,54 +683,44 @@ export class ChessBoard {
   }
 
   public getTile(square: Square) {
-    const simple = simplify(square);
-    if (
-      simple.file < 0 ||
-      simple.file >= 8 ||
-      simple.rank < 0 ||
-      simple.rank >= 8
-    )
-      return undefined;
+    if (!square.isValid()) return undefined;
+
+    const simple = Square.simplify(square);
     return this.tiles[simple.rank][simple.file];
   }
 
-  public getKing(color: Color){
-    return color === "white" ? this.whiteKingPosition.piece as King : this.blackKingPosition.piece as King;
+  public getKing(color: Color) {
+    return color === "white"
+      ? (this.whiteKingPosition.piece as King)
+      : (this.blackKingPosition.piece as King);
   }
 
   public makeMove(move: Move) {
-    console.log(move.toString());
+    const targetTile = this.getTile(move.targetSquare)!;
+    targetTile.piece = move.movePiece;
+    const startingTile = this.getTile(move.startingSquare)!;
+    startingTile.piece = undefined;
+    this.changeTurn();
   }
 
   public undoMove(move: Move) {
-    console.log(move.toString());
+    const startingTile = this.getTile(move.startingSquare)!;
+    startingTile.piece = move.movePiece;
+    const targetTile = this.getTile(move.targetSquare)!;
+    targetTile.piece = move.capturePiece;
+    this.changeTurn();
+  }
+
+  private changeTurn(){
+    this.turn = this.turn === "white" ? "black" : "white";
   }
 
   public getLegalMoves(selectedTile: ChessTile) {
-    return selectedTile.piece ? selectedTile.piece.possibleMoves(this, selectedTile.square) : [];
+    const moves = selectedTile.piece!.possibleMoves(this, selectedTile.square);
+    return moves;
   }
 
   public calculateCheckType(move: Move): CheckType {
     return move.isEnPassant ? "none" : "checkmate";
   }
-}
-
-export function simplify(square: Square) {
-  const files = {
-    a: 0,
-    b: 1,
-    c: 2,
-    d: 3,
-    e: 4,
-    f: 5,
-    g: 6,
-    h: 7,
-  };
-
-  return { file: files[square.file], rank: square.rank - 1 };
-}
-
-export function chessify(file: number, rank: number): Square {
-  const files: ChessFile[] = ["a", "b", "c", "d", "e", "f", "g", "h"];
-  return new Square(files[file], (rank + 1) as ChessRank);
 }
