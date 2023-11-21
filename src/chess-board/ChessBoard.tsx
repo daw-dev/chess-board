@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import chessboardStyle from "./ChessBoard.module.css";
 import classNames from "classnames";
 import { ChessBoard, ChessTile, Color, Square } from "./types";
@@ -15,9 +15,7 @@ interface ChessBoardCmpProps {
 
 export function ChessBoardCmp(props: ChessBoardCmpProps) {
   const fenstring = props.position ?? defaultPosition;
-  const [board] = useState(() =>
-    ChessBoard.createChessBoard(fenstring)
-  );
+  const [board] = useState(() => ChessBoard.createChessBoard(fenstring));
 
   const forceUpdate = useForceUpdate();
 
@@ -25,9 +23,20 @@ export function ChessBoardCmp(props: ChessBoardCmpProps) {
     ChessTile | undefined
   >(undefined);
 
+  useEffect(() => {
+    const listener = function (ev: KeyboardEvent) {
+      if (ev.key === "u" || ev.key === "U") {
+        board.undoLastMove();
+        forceUpdate();
+      }
+    };
+    listener.bind(window);
+    addEventListener("keydown", listener);
+    return () => removeEventListener("keydown", listener);
+  }, []);
+
   const selectedLegalMoves =
-    currentSelectedPosition &&
-    board.getLegalMoves(currentSelectedPosition);
+    currentSelectedPosition && board.getLegalMoves(currentSelectedPosition);
 
   const className = classNames(
     chessboardStyle.chessboard,
@@ -51,9 +60,11 @@ export function ChessBoardCmp(props: ChessBoardCmpProps) {
     }
   }
 
-  function makeMove(targetTile: ChessTile){
-    const move = selectedLegalMoves!.find(move => _.isEqual(move.targetSquare, targetTile.square))!;
-    board.makeMove(move);
+  function makeMove(targetTile: ChessTile) {
+    const move = selectedLegalMoves!.find((move) =>
+      _.isEqual(move.targetSquare, targetTile.square)
+    )!;
+    board.makeMove(move, true);
     forceUpdate();
   }
 

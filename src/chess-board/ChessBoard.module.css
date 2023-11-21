@@ -32,11 +32,11 @@
 }
 
 .chesstile.even {
-  background-color: #dff;
+  background-color: #448;
 }
 
 .chesstile.odd {
-  background-color: #448;
+  background-color: #dff;
 }
 
 .chesstile {

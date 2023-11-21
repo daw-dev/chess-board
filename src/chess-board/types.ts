@@ -2,7 +2,7 @@ export type Color = "white" | "black";
 
 type ChessFile = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h";
 type ChessRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-type CheckType = "none" | "check" | "checkmate";
+type CheckType = "none" | "check" | "checkmate" | "stalemate";
 
 class Move {
   public readonly startingSquare: Square;
@@ -11,17 +11,20 @@ class Move {
   public readonly isCapture: boolean;
   public readonly isEnPassant: boolean;
   public readonly isCastles: boolean;
+  public readonly isDoubleStep: boolean;
   public readonly capturePiece: Piece | undefined;
   public readonly checkType: CheckType;
 
   constructor(
     board: ChessBoard,
+    checkCalculation: boolean,
     startingSquare: Square,
     targetSquare: Square,
     movePiece: Piece,
     isCapture: boolean,
     isEnpassant: boolean,
     isCastles: boolean,
+    isDoubleStep: boolean,
     capturePiece?: Piece
   ) {
     this.startingSquare = startingSquare;
@@ -30,8 +33,9 @@ class Move {
     this.isCapture = isCapture;
     this.isEnPassant = isEnpassant;
     this.isCastles = isCastles;
+    this.isDoubleStep = isDoubleStep;
     this.capturePiece = capturePiece;
-    this.checkType = board.calculateCheckType(this);
+    this.checkType = checkCalculation ? board.calculateCheckType(this) : "none";
   }
 
   public toString() {
@@ -116,12 +120,14 @@ abstract class Piece {
 
   public abstract possibleMoves(
     board: ChessBoard,
-    startingSquare: Square
+    startingSquare: Square,
+    checkCalculation: boolean
   ): Move[];
   public abstract getSimpleName(): PieceLetter;
   public abstract getFileImageName(): string;
   protected checkAndAdd(
     board: ChessBoard,
+    checkCalculation: boolean = true,
     startingSquare: Square,
     targetSquare: Square,
     moves: Move[]
@@ -133,9 +139,11 @@ abstract class Piece {
     if (!tile.piece) {
       const move = new Move(
         board,
+        checkCalculation,
         startingSquare,
         targetSquare,
         this,
+        false,
         false,
         false,
         false
@@ -149,10 +157,12 @@ abstract class Piece {
 
     const move = new Move(
       board,
+      checkCalculation,
       startingSquare,
       targetSquare,
       this,
       true,
+      false,
       false,
       false,
       tile.piece
@@ -164,6 +174,8 @@ abstract class Piece {
 }
 
 class Pawn extends Piece {
+  public doubleStep: boolean = false;
+
   public getSimpleName(): PieceLetter {
     return this.pieceColor === "white" ? "P" : "p";
   }
@@ -174,6 +186,7 @@ class Pawn extends Piece {
 
   private checkAndAddDiagonal(
     board: ChessBoard,
+    checkCalculation: boolean,
     startingSquare: Square,
     targetSquare: Square,
     moves: Move[]
@@ -181,26 +194,80 @@ class Pawn extends Piece {
     if (!targetSquare.isValid()) return;
 
     const piece = board.getTile(targetSquare)!.piece;
-    if (!piece) return;
+    if (piece) {
+      if (piece.pieceColor === this.pieceColor) return;
 
-    if (piece.pieceColor === this.pieceColor) return;
+      moves.push(
+        new Move(
+          board,
+          checkCalculation,
+          startingSquare,
+          targetSquare,
+          this,
+          true,
+          false,
+          false,
+          false,
+          piece
+        )
+      );
+      return;
+    }
 
-    moves.push(
-      new Move(
-        board,
-        startingSquare,
-        targetSquare,
-        this,
-        true,
-        false,
-        false,
-        piece
-      )
-    );
+    if (this.pieceColor === "white") {
+      if (startingSquare.rank !== 5) return;
+
+      const checkSquare = targetSquare.add(0, -1);
+      const checkTile = board.getTile(checkSquare)!;
+      if (!checkTile.piece || !(checkTile.piece instanceof Pawn)) return;
+
+      const pawn = checkTile.piece as Pawn;
+      if (pawn.doubleStep) {
+        moves.push(
+          new Move(
+            board,
+            checkCalculation,
+            startingSquare,
+            targetSquare,
+            this,
+            true,
+            true,
+            false,
+            false,
+            pawn
+          )
+        );
+      }
+    } else {
+      if (startingSquare.rank !== 4) return;
+
+      const checkSquare = targetSquare.add(0, 1);
+      const checkTile = board.getTile(checkSquare)!;
+      if (!checkTile.piece || checkTile.piece instanceof Pawn) return;
+
+      const pawn = checkTile.piece as Pawn;
+      if (pawn.doubleStep) {
+        moves.push(
+          new Move(
+            board,
+            checkCalculation,
+            startingSquare,
+            targetSquare,
+            this,
+            true,
+            true,
+            false,
+            false,
+            pawn
+          )
+        );
+      }
+    }
   }
 
   protected checkAndAdd(
     board: ChessBoard,
+    checkCalculation: boolean,
     startingSquare: Square,
     targetSquare: Square,
     moves: Move[]
@@ -212,12 +279,14 @@ class Pawn extends Piece {
     if (!tile.piece) {
       const move = new Move(
         board,
+        checkCalculation,
         startingSquare,
         targetSquare,
         this,
         false,
         false,
-        false
+        false,
+        Math.abs(targetSquare.rank! - startingSquare.rank!) > 1
       );
       moves.push(move);
 
@@ -227,12 +296,17 @@ class Pawn extends Piece {
     return undefined;
   }
 
-  public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
+  public possibleMoves(
+    board: ChessBoard,
+    startingSquare: Square,
+    checkCalculation: boolean = true
+  ): Move[] {
     const moves: Move[] = [];
     if (this.pieceColor === "white") {
       if (
         this.checkAndAdd(
           board,
+          checkCalculation,
           startingSquare,
           startingSquare.add(0, 1),
           moves
@@ -241,6 +315,7 @@ class Pawn extends Piece {
       ) {
         this.checkAndAdd(
           board,
+          checkCalculation,
           startingSquare,
           startingSquare.add(0, 2),
           moves
@@ -248,12 +323,14 @@ class Pawn extends Piece {
       }
       this.checkAndAddDiagonal(
         board,
+        checkCalculation,
         startingSquare,
         startingSquare.add(1, 1),
         moves
       );
       this.checkAndAddDiagonal(
         board,
+        checkCalculation,
         startingSquare,
         startingSquare.add(-1, 1),
         moves
@@ -262,6 +339,7 @@ class Pawn extends Piece {
       if (
         this.checkAndAdd(
           board,
+          checkCalculation,
           startingSquare,
           startingSquare.add(0, -1),
           moves
@@ -270,6 +348,7 @@ class Pawn extends Piece {
       ) {
         this.checkAndAdd(
           board,
+          checkCalculation,
           startingSquare,
           startingSquare.add(0, -2),
           moves
@@ -277,26 +356,30 @@ class Pawn extends Piece {
       }
       this.checkAndAddDiagonal(
         board,
+        checkCalculation,
         startingSquare,
         startingSquare.add(1, -1),
         moves
       );
       this.checkAndAddDiagonal(
         board,
+        checkCalculation,
         startingSquare,
         startingSquare.add(-1, -1),
         moves
       );
     }
 
-    // TODO: en passant
-
     return moves;
   }
 }
 
 class Rook extends Piece {
-  public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
+  public possibleMoves(
+    board: ChessBoard,
+    startingSquare: Square,
+    checkCalculation: boolean = true
+  ): Move[] {
     const moves: Move[] = [];
     let topDone = false,
       bottomDone = false,
@@ -304,24 +387,44 @@ class Rook extends Piece {
       leftDone = false;
     for (let i = 1; i < 8; i++) {
       if (!topDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, i), moves);
-        if(!newMove || newMove.isCapture)
-          topDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(0, i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) topDone = true;
       }
       if (!bottomDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, -i), moves);
-        if(!newMove || newMove.isCapture)
-          bottomDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(0, -i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) bottomDone = true;
       }
       if (!rightDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, 0), moves);
-        if(!newMove || newMove.isCapture)
-          rightDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(i, 0),
+          moves
+        );
+        if (!newMove || newMove.isCapture) rightDone = true;
       }
       if (!leftDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, 0), moves);
-        if(!newMove || newMove.isCapture)
-          leftDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(-i, 0),
+          moves
+        );
+        if (!newMove || newMove.isCapture) leftDone = true;
       }
     }
 
@@ -340,53 +443,65 @@ class Rook extends Piece {
 }
 
 class Knight extends Piece {
-  public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
+  public possibleMoves(
+    board: ChessBoard,
+    startingSquare: Square,
+    checkCalculation: boolean = true
+  ): Move[] {
     const moves: Move[] = [];
 
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(1, 2),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(-1, 2),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(1, -2),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(-1, -2),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(2, 1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(2, -1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(-2, 1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(-2, -1),
       moves
@@ -403,7 +518,11 @@ class Knight extends Piece {
 }
 
 class Bishop extends Piece {
-  public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
+  public possibleMoves(
+    board: ChessBoard,
+    startingSquare: Square,
+    checkCalculation: boolean = true
+  ): Move[] {
     const moves: Move[] = [];
     let topRightDone = false,
       bottomLeftDone = false,
@@ -411,24 +530,44 @@ class Bishop extends Piece {
       topLeftDone = false;
     for (let i = 1; i < 8; i++) {
       if (!topRightDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, i), moves);
-        if(!newMove || newMove.isCapture)
-          topRightDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(i, i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) topRightDone = true;
       }
       if (!bottomRightDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, -i), moves);
-        if(!newMove || newMove.isCapture)
-          bottomRightDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(i, -i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) bottomRightDone = true;
       }
       if (!topLeftDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, i), moves);
-        if(!newMove || newMove.isCapture)
-          topLeftDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(-i, i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) topLeftDone = true;
       }
       if (!bottomLeftDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, -i), moves);
-        if(!newMove || newMove.isCapture)
-          bottomLeftDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(-i, -i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) bottomLeftDone = true;
       }
     }
 
@@ -447,7 +586,11 @@ class Queen extends Piece {
   public getFileImageName(): string {
     return `${this.pieceColor}_queen.svg`;
   }
-  public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
+  public possibleMoves(
+    board: ChessBoard,
+    startingSquare: Square,
+    checkCalculation: boolean = true
+  ): Move[] {
     const moves: Move[] = [];
     let topDone = false,
       bottomDone = false,
@@ -459,44 +602,84 @@ class Queen extends Piece {
       topLeftDone = false;
     for (let i = 1; i < 8; i++) {
       if (!topDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, i), moves);
-        if(!newMove || newMove.isCapture)
-          topDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(0, i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) topDone = true;
       }
       if (!bottomDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(0, -i), moves);
-        if(!newMove || newMove.isCapture)
-          bottomDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(0, -i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) bottomDone = true;
       }
       if (!rightDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, 0), moves);
-        if(!newMove || newMove.isCapture)
-          rightDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(i, 0),
+          moves
+        );
+        if (!newMove || newMove.isCapture) rightDone = true;
       }
       if (!leftDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, 0), moves);
-        if(!newMove || newMove.isCapture)
-          leftDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(-i, 0),
+          moves
+        );
+        if (!newMove || newMove.isCapture) leftDone = true;
       }
       if (!topRightDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, i), moves);
-        if(!newMove || newMove.isCapture)
-          topRightDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(i, i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) topRightDone = true;
       }
       if (!bottomRightDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(i, -i), moves);
-        if(!newMove || newMove.isCapture)
-          bottomRightDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(i, -i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) bottomRightDone = true;
       }
       if (!topLeftDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, i), moves);
-        if(!newMove || newMove.isCapture)
-          topLeftDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(-i, i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) topLeftDone = true;
       }
       if (!bottomLeftDone) {
-        const newMove = this.checkAndAdd(board, startingSquare, startingSquare.add(-i, -i), moves);
-        if(!newMove || newMove.isCapture)
-          bottomLeftDone = true;
+        const newMove = this.checkAndAdd(
+          board,
+          checkCalculation,
+          startingSquare,
+          startingSquare.add(-i, -i),
+          moves
+        );
+        if (!newMove || newMove.isCapture) bottomLeftDone = true;
       }
     }
 
@@ -514,53 +697,65 @@ export class King extends Piece {
   public getFileImageName(): string {
     return `${this.pieceColor}_king.svg`;
   }
-  public possibleMoves(board: ChessBoard, startingSquare: Square): Move[] {
+  public possibleMoves(
+    board: ChessBoard,
+    startingSquare: Square,
+    checkCalculation: boolean = true
+  ): Move[] {
     const moves: Move[] = [];
 
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(-1, -1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(-1, 0),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(-1, 1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(0, -1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(0, 1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(1, -1),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(1, 0),
       moves
     );
     this.checkAndAdd(
       board,
+      checkCalculation,
       startingSquare,
       startingSquare.add(1, 1),
       moves
@@ -695,32 +890,271 @@ export class ChessBoard {
       : (this.blackKingPosition.piece as King);
   }
 
-  public makeMove(move: Move) {
+  public readonly history: Move[] = [];
+
+  public makeMove(move: Move, printCheckType: boolean = false) {
+    if (printCheckType) {
+      const checkType = this.calculateCheckType(move);
+      console.log(checkType);
+    }
     const targetTile = this.getTile(move.targetSquare)!;
     targetTile.piece = move.movePiece;
     const startingTile = this.getTile(move.startingSquare)!;
     startingTile.piece = undefined;
+
+    if (move.isDoubleStep) {
+      const pawn = move.movePiece as Pawn;
+      pawn.doubleStep = true;
+    }
+    const lastMove = this.history[this.history.length - 1];
+    if (lastMove && lastMove.isDoubleStep) {
+      (lastMove.movePiece as Pawn).doubleStep = false;
+    }
+    if (move.isEnPassant) {
+      const capturedPawnSquare =
+        this.turn === "white"
+          ? move.targetSquare.add(0, -1)
+          : move.targetSquare.add(0, 1);
+
+      this.getTile(capturedPawnSquare)!.piece = undefined;
+    }
+
     this.changeTurn();
+    this.history.push(move);
+  }
+
+  public undoLastMove() {
+    const lastMove = this.history.pop();
+    if (!lastMove) return;
+
+    this.undoMove(lastMove);
   }
 
   public undoMove(move: Move) {
-    const startingTile = this.getTile(move.startingSquare)!;
-    startingTile.piece = move.movePiece;
-    const targetTile = this.getTile(move.targetSquare)!;
-    targetTile.piece = move.capturePiece;
+    if (move.isEnPassant) {
+      const startingTile = this.getTile(move.startingSquare)!;
+      startingTile.piece = move.movePiece;
+      const targetTile = this.getTile(move.targetSquare)!;
+      targetTile.piece = undefined;
+      const capturedPawnSquare =
+        this.turn === "white"
+          ? move.targetSquare.add(0, 1)
+          : move.targetSquare.add(0, -1);
+
+      this.getTile(capturedPawnSquare)!.piece = move.capturePiece;
+    } else {
+      const startingTile = this.getTile(move.startingSquare)!;
+      startingTile.piece = move.movePiece;
+      const targetTile = this.getTile(move.targetSquare)!;
+      targetTile.piece = move.capturePiece;
+    }
+
+    if (move.isDoubleStep) {
+      const pawn = move.movePiece as Pawn;
+      pawn.doubleStep = false;
+    }
+    const lastMove = this.history[this.history.length - 1];
+    if (lastMove && lastMove.isDoubleStep) {
+      (lastMove.movePiece as Pawn).doubleStep = true;
+    }
+
     this.changeTurn();
   }
 
-  private changeTurn(){
+  private changeTurn() {
     this.turn = this.turn === "white" ? "black" : "white";
   }
 
-  public getLegalMoves(selectedTile: ChessTile) {
-    const moves = selectedTile.piece!.possibleMoves(this, selectedTile.square);
+  public getLegalMoves(
+    selectedTile: ChessTile,
+    checkCalculation: boolean = true
+  ) {
+    const moves = selectedTile.piece!.possibleMoves(
+      this,
+      selectedTile.square,
+      checkCalculation
+    );
+    return moves.filter(move => {
+      this.makeMove(move);
+
+      const kingSquare = this.turn === "white" ? this.blackKingPosition.square : this.whiteKingPosition.square;
+      const isInCheck = this.isInCheck(kingSquare, this.turn);
+
+      console.log(`${move.toString()}: ${isInCheck}`)
+      
+      this.undoMove(move);
+
+      return !isInCheck;
+    });
+  }
+
+  public getAllLegalMoves(checkCalculation: boolean = true) {
+    const moves: Move[] = [];
+    for (let simpleRank = 0; simpleRank < 8; simpleRank++) {
+      for (let simpleFile = 0; simpleFile < 8; simpleFile++) {
+        const tile = this.tiles[simpleRank][simpleFile];
+
+        if (!tile.piece || tile.piece.pieceColor !== this.turn) continue;
+
+        moves.push(...this.getLegalMoves(tile, checkCalculation));
+      }
+    }
+
     return moves;
   }
 
+  private isInCheck(square: Square, turn: Color) {
+    let topDone = false,
+      bottomDone = false,
+      rightDone = false,
+      leftDone = false,
+      topRightDone = false,
+      bottomLeftDone = false,
+      bottomRightDone = false,
+      topLeftDone = false;
+    for (let i = 1; i < 8; i++) {
+      if (!topDone) {
+        const piece = this.checkLinear(square.add(0, i));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          topDone = true;
+        }
+      }
+      if (!bottomDone) {
+        const piece = this.checkLinear(square.add(0, -i));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          bottomDone = true;
+        }
+      }
+      if (!rightDone) {
+        const piece = this.checkLinear(square.add(i, 0));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          rightDone = true;
+        }
+      }
+      if (!leftDone) {
+        const piece = this.checkLinear(square.add(-i, 0));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          topDone = true;
+        }
+      }
+      if (!topRightDone) {
+        const piece = this.checkDiagonal(square.add(i, i));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          topRightDone = true;
+        }
+      }
+      if (!bottomRightDone) {
+        const piece = this.checkDiagonal(square.add(i, -i));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          bottomRightDone = true;
+        }
+      }
+      if (!topLeftDone) {
+        const piece = this.checkDiagonal(square.add(-i, i));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          topLeftDone = true;
+        }
+      }
+      if (!bottomLeftDone) {
+        const piece = this.checkDiagonal(square.add(-i, -i));
+        if (piece) {
+          if (
+            (piece instanceof Queen || piece instanceof Rook) &&
+            piece.pieceColor !== turn
+          )
+            return true;
+          bottomLeftDone = true;
+        }
+      }
+    }
+
+    if (this.checkKnight(square.add(1, 2))) return true;
+    if (this.checkKnight(square.add(1, -2))) return true;
+    if (this.checkKnight(square.add(-1, 2))) return true;
+    if (this.checkKnight(square.add(-1, -2))) return true;
+    if (this.checkKnight(square.add(2, 1))) return true;
+    if (this.checkKnight(square.add(2, -1))) return true;
+    if (this.checkKnight(square.add(-2, 1))) return true;
+    if (this.checkKnight(square.add(-2, -1))) return true;
+
+    return false;
+  }
+
+  private checkDiagonal(square: Square) {
+    if (!square.isValid()) return undefined;
+
+    const tile = this.getTile(square)!;
+    if (!tile.piece) return undefined;
+    return tile.piece;
+  }
+
+  private checkLinear(square: Square) {
+    if (!square.isValid()) return undefined;
+
+    const tile = this.getTile(square)!;
+    if (!tile.piece) return undefined;
+    return tile.piece;
+  }
+
+  private checkKnight(square: Square) {
+    if (!square.isValid()) return false;
+
+    const tile = this.getTile(square)!;
+    if (!tile.piece) return false;
+    return tile.piece && tile.piece instanceof Knight;
+  }
+
   public calculateCheckType(move: Move): CheckType {
-    return move.isEnPassant ? "none" : "checkmate";
+    this.makeMove(move);
+
+    const isMate = false;
+    const isCheck = this.isInCheck(
+      this.turn === "white"
+        ? this.whiteKingPosition.square
+        : this.blackKingPosition.square,
+      this.turn
+    );
+
+    this.undoMove(move);
+
+    if (isCheck && isMate) return "checkmate";
+    if (isCheck && !isMate) return "check";
+    if (!isCheck && isMate) return "stalemate";
+    return "none";
   }
 }
