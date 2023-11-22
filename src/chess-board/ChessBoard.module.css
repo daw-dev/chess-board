@@ -1,46 +1,30 @@
 .chessboard {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
   position: relative;
   width: 500px;
   aspect-ratio: 1;
-}
-
-.chessboard.white-view {
-  flex-direction: column-reverse;
+  transition: rotate 500ms;
+  user-select: none;
 }
 
 .chessboard.black-view {
-  flex-direction: column;
-}
-
-.rank {
-  display: flex;
-  aspect-ratio: 8;
-}
-
-.chessboard.white-view .rank {
-  flex-direction: row;
-}
-
-.chessboard.black-view .rank {
-  flex-direction: row-reverse;
+  rotate: 180deg;
 }
 
 .chesstile {
   aspect-ratio: 1;
   display: flex;
+  position: relative;
 }
 
 .chesstile.even {
-  background-color: #448;
+  background-color: var(--dark-color, #448);
 }
 
 .chesstile.odd {
-  background-color: #dff;
-}
-
-.chesstile {
-  position: relative;
+  background-color: var(--light-color, #dff);
 }
 
 .chesstile.piece {
@@ -51,16 +35,75 @@
   cursor: grabbing;
 }
 
-.legalmove {
-  background-color: #0004;
-  border-radius: 50%;
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  scale: .75;
+.chesstile.piece img {
+  transition: rotate 500ms;
+}
+
+.chessboard.black-view .chesstile.piece img {
+  rotate: -180deg;
+}
+
+.chesstile.legalmove {
   cursor: pointer;
 }
 
-.selected {
-  background-color: red !important;
+.chesstile > .legalmove {
+  position: absolute;
+  background-color: #0003;
+  border-radius: 50%;
+  border: solid #0002 5px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  scale: 0.5;
+}
+
+.chesstile.piece.selected {
+  --shadow-color: #0003;
+}
+
+.chesstile.piece.check {
+  --shadow-color: #fb0;
+}
+
+.chesstile.piece.checkmate {
+  --shadow-color: #d00;
+}
+
+.chesstile.piece.stalemate {
+  --shadow-color: #28a;
+}
+
+.chesstile.piece.nomaterial {
+  --shadow-color: #555;
+}
+
+.chesstile.piece img {
+  filter: drop-shadow(0px 0px 10px var(--shadow-color));
+}
+
+.symbol {
+  position: absolute;
+  background-color: black;
+  display: flex;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  border-radius: 50%;
+  aspect-ratio: 1;
+  z-index: 1;
+  scale: 50%;
+  align-items: center;
+  justify-content: center;
+}
+
+.text {
+  transition: rotate 500ms;
+  position: absolute;
+  font-size: 45px;
+  font-weight: bold;
+}
+
+.chessboard.black-view .text{
+  rotate: -180deg;
 }

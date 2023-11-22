@@ -2,7 +2,7 @@ export type Color = "white" | "black";
 
 type ChessFile = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h";
 type ChessRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-type CheckType = "none" | "check" | "checkmate" | "stalemate";
+export type CheckType = "none" | "check" | "checkmate" | "stalemate" | "nomaterial";
 
 class Move {
   public readonly startingSquare: Square;
@@ -43,9 +43,9 @@ class Move {
       return this.targetSquare.file === "a" ? "O-O-O" : "O-O";
     }
 
-    return `${this.movePiece.getSimpleName()}${
-      this.isCapture ? "x" : ""
-    }${this.targetSquare.toString()}${
+    return `${this.movePiece.getSimpleName()}${this.isCapture ? "x" : ""}${
+      this.targetSquare
+    }${
       this.checkType === "check"
         ? "+"
         : this.checkType === "checkmate"
@@ -801,8 +801,8 @@ type PieceLetter =
 export class ChessBoard {
   public readonly tiles: ChessTile[][];
   public turn: Color;
-  public readonly whiteKingPosition: ChessTile;
-  public readonly blackKingPosition: ChessTile;
+  public whiteKingTile: ChessTile;
+  public blackKingTile: ChessTile;
 
   private constructor(
     tiles: ChessTile[][],
@@ -812,8 +812,8 @@ export class ChessBoard {
   ) {
     this.tiles = tiles;
     this.turn = turn;
-    this.whiteKingPosition = whiteKingPosition;
-    this.blackKingPosition = blackKingPosition;
+    this.whiteKingTile = whiteKingPosition;
+    this.blackKingTile = blackKingPosition;
   }
 
   public static createChessBoard(fenstring: string) {
@@ -886,17 +886,13 @@ export class ChessBoard {
 
   public getKing(color: Color) {
     return color === "white"
-      ? (this.whiteKingPosition.piece as King)
-      : (this.blackKingPosition.piece as King);
+      ? (this.whiteKingTile.piece as King)
+      : (this.blackKingTile.piece as King);
   }
 
   public readonly history: Move[] = [];
 
-  public makeMove(move: Move, printCheckType: boolean = false) {
-    if (printCheckType) {
-      const checkType = this.calculateCheckType(move);
-      console.log(checkType);
-    }
+  public makeMove(move: Move) {
     const targetTile = this.getTile(move.targetSquare)!;
     targetTile.piece = move.movePiece;
     const startingTile = this.getTile(move.startingSquare)!;
@@ -917,6 +913,14 @@ export class ChessBoard {
           : move.targetSquare.add(0, 1);
 
       this.getTile(capturedPawnSquare)!.piece = undefined;
+    }
+
+    if (move.movePiece instanceof King) {
+      if (this.turn === "white") {
+        this.whiteKingTile = targetTile;
+      } else {
+        this.blackKingTile = targetTile;
+      }
     }
 
     this.changeTurn();
@@ -947,6 +951,13 @@ export class ChessBoard {
       startingTile.piece = move.movePiece;
       const targetTile = this.getTile(move.targetSquare)!;
       targetTile.piece = move.capturePiece;
+      if (move.movePiece instanceof King) {
+        if (this.turn === "white") {
+          this.blackKingTile = startingTile;
+        } else {
+          this.whiteKingTile = startingTile;
+        }
+      }
     }
 
     if (move.isDoubleStep) {
@@ -961,197 +972,88 @@ export class ChessBoard {
     this.changeTurn();
   }
 
+  public static other(turn: Color): Color {
+    return turn === "white" ? "black" : "white";
+  }
+
   private changeTurn() {
-    this.turn = this.turn === "white" ? "black" : "white";
+    this.turn = ChessBoard.other(this.turn);
   }
 
   public getLegalMoves(
     selectedTile: ChessTile,
-    checkCalculation: boolean = true
+    checkCalculation: boolean = true,
+    illegalCalculation: boolean = true
   ) {
     const moves = selectedTile.piece!.possibleMoves(
       this,
       selectedTile.square,
       checkCalculation
     );
-    return moves.filter(move => {
+    if (!illegalCalculation) return moves;
+
+    return moves.filter((move) => {
       this.makeMove(move);
 
-      const kingSquare = this.turn === "white" ? this.blackKingPosition.square : this.whiteKingPosition.square;
-      const isInCheck = this.isInCheck(kingSquare, this.turn);
+      this.changeTurn();
+      const isInCheck = this.isInCheck();
+      this.changeTurn();
 
-      console.log(`${move.toString()}: ${isInCheck}`)
-      
-      this.undoMove(move);
+      this.undoLastMove();
 
       return !isInCheck;
     });
   }
 
-  public getAllLegalMoves(checkCalculation: boolean = true) {
-    const moves: Move[] = [];
+  public getAllPieceTiles() {
+    const pieceTiles: ChessTile[] = [];
     for (let simpleRank = 0; simpleRank < 8; simpleRank++) {
       for (let simpleFile = 0; simpleFile < 8; simpleFile++) {
         const tile = this.tiles[simpleRank][simpleFile];
 
-        if (!tile.piece || tile.piece.pieceColor !== this.turn) continue;
+        if (!tile.piece) continue;
 
-        moves.push(...this.getLegalMoves(tile, checkCalculation));
+        pieceTiles.push(tile);
       }
     }
+    return pieceTiles;
+  }
+
+  public getAllLegalMoves(
+    checkCalculation: boolean = true,
+    illegalCalculation: boolean = true
+  ) {
+    const moves: Move[] = [];
+    this.getAllPieceTiles()
+      .filter((tile) => tile.piece!.pieceColor === this.turn)
+      .forEach((tile) => {
+        moves.push(
+          ...this.getLegalMoves(tile, checkCalculation, illegalCalculation)
+        );
+      });
 
     return moves;
   }
 
-  private isInCheck(square: Square, turn: Color) {
-    let topDone = false,
-      bottomDone = false,
-      rightDone = false,
-      leftDone = false,
-      topRightDone = false,
-      bottomLeftDone = false,
-      bottomRightDone = false,
-      topLeftDone = false;
-    for (let i = 1; i < 8; i++) {
-      if (!topDone) {
-        const piece = this.checkLinear(square.add(0, i));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          topDone = true;
-        }
-      }
-      if (!bottomDone) {
-        const piece = this.checkLinear(square.add(0, -i));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          bottomDone = true;
-        }
-      }
-      if (!rightDone) {
-        const piece = this.checkLinear(square.add(i, 0));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          rightDone = true;
-        }
-      }
-      if (!leftDone) {
-        const piece = this.checkLinear(square.add(-i, 0));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          topDone = true;
-        }
-      }
-      if (!topRightDone) {
-        const piece = this.checkDiagonal(square.add(i, i));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          topRightDone = true;
-        }
-      }
-      if (!bottomRightDone) {
-        const piece = this.checkDiagonal(square.add(i, -i));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          bottomRightDone = true;
-        }
-      }
-      if (!topLeftDone) {
-        const piece = this.checkDiagonal(square.add(-i, i));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          topLeftDone = true;
-        }
-      }
-      if (!bottomLeftDone) {
-        const piece = this.checkDiagonal(square.add(-i, -i));
-        if (piece) {
-          if (
-            (piece instanceof Queen || piece instanceof Rook) &&
-            piece.pieceColor !== turn
-          )
-            return true;
-          bottomLeftDone = true;
-        }
-      }
-    }
-
-    if (this.checkKnight(square.add(1, 2))) return true;
-    if (this.checkKnight(square.add(1, -2))) return true;
-    if (this.checkKnight(square.add(-1, 2))) return true;
-    if (this.checkKnight(square.add(-1, -2))) return true;
-    if (this.checkKnight(square.add(2, 1))) return true;
-    if (this.checkKnight(square.add(2, -1))) return true;
-    if (this.checkKnight(square.add(-2, 1))) return true;
-    if (this.checkKnight(square.add(-2, -1))) return true;
-
-    return false;
-  }
-
-  private checkDiagonal(square: Square) {
-    if (!square.isValid()) return undefined;
-
-    const tile = this.getTile(square)!;
-    if (!tile.piece) return undefined;
-    return tile.piece;
-  }
-
-  private checkLinear(square: Square) {
-    if (!square.isValid()) return undefined;
-
-    const tile = this.getTile(square)!;
-    if (!tile.piece) return undefined;
-    return tile.piece;
-  }
-
-  private checkKnight(square: Square) {
-    if (!square.isValid()) return false;
-
-    const tile = this.getTile(square)!;
-    if (!tile.piece) return false;
-    return tile.piece && tile.piece instanceof Knight;
+  private isInCheck() {
+    this.changeTurn();
+    const isCheck = this.getAllLegalMoves(false, false).some(
+      (move) => move.capturePiece instanceof King
+    );
+    this.changeTurn();
+    return isCheck;
   }
 
   public calculateCheckType(move: Move): CheckType {
     this.makeMove(move);
 
-    const isMate = false;
-    const isCheck = this.isInCheck(
-      this.turn === "white"
-        ? this.whiteKingPosition.square
-        : this.blackKingPosition.square,
-      this.turn
-    );
+    const isMate = this.getAllLegalMoves(false).length === 0;
+    const isCheck = this.isInCheck();
+    const noMat = !this.getAllPieceTiles().some(tile => !(tile.piece instanceof King));
 
-    this.undoMove(move);
+    this.undoLastMove();
 
+    if (noMat) return "nomaterial";
     if (isCheck && isMate) return "checkmate";
     if (isCheck && !isMate) return "check";
     if (!isCheck && isMate) return "stalemate";

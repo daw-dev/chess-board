@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { createRef, useEffect, useState } from "react";
 import chessboardStyle from "./ChessBoard.module.css";
 import classNames from "classnames";
-import { ChessBoard, ChessTile, Color, Square } from "./types";
+import { CheckType, ChessBoard, ChessTile, Color, King, Square } from "./types";
 import _ from "lodash";
 import useForceUpdate from "../utils/useForceUpdate";
 
@@ -13,9 +13,19 @@ interface ChessBoardCmpProps {
   view?: Color;
 }
 
+type CheckState = {
+  white: CheckType;
+  black: CheckType;
+};
+
 export function ChessBoardCmp(props: ChessBoardCmpProps) {
   const fenstring = props.position ?? defaultPosition;
   const [board] = useState(() => ChessBoard.createChessBoard(fenstring));
+
+  const [checks, setChecks] = useState<CheckState>({
+    white: "none",
+    black: "none",
+  });
 
   const forceUpdate = useForceUpdate();
 
@@ -64,34 +74,49 @@ export function ChessBoardCmp(props: ChessBoardCmpProps) {
     const move = selectedLegalMoves!.find((move) =>
       _.isEqual(move.targetSquare, targetTile.square)
     )!;
-    board.makeMove(move, true);
-    forceUpdate();
+    board.makeMove(move);
+    const checkType = move.checkType;
+    if (checkType === "stalemate" || checkType === "nomaterial") {
+      setChecks({ white: checkType, black: checkType });
+    } else {
+      const newChecks = {} as CheckState;
+      newChecks[board.turn] = checkType;
+      newChecks[ChessBoard.other(board.turn)] = "none";
+      setChecks(newChecks);
+    }
   }
 
   return (
     <div className={className}>
-      {board.tiles.map((rank, rankIndex) => (
-        <div className={chessboardStyle.rank} key={rankIndex}>
-          {rank.map((piece, pieceIndex) => (
-            <ChessTileCmp
-              key={pieceIndex}
-              chessTile={piece}
-              isSelected={currentSelectedPosition === piece}
-              isLegal={
-                selectedLegalMoves !== undefined &&
-                selectedLegalMoves.findIndex((move) =>
-                  _.isEqual(move.targetSquare, piece.square)
-                ) !== -1
-              }
-              clickCallback={onTileClicked}
-              currentChessPosition={board}
-            />
-          ))}
-        </div>
+      {board.tiles.flat().map((tile) => (
+        <ChessTileCmp
+          key={tile.square.toString()}
+          chessTile={tile}
+          isSelected={
+            currentSelectedPosition === tile &&
+            selectedLegalMoves !== undefined &&
+            selectedLegalMoves.length > 0
+          }
+          isLegal={
+            selectedLegalMoves !== undefined &&
+            selectedLegalMoves.some((move) =>
+              _.isEqual(move.targetSquare, tile.square)
+            )
+          }
+          clickCallback={onTileClicked}
+          currentChessPosition={board}
+          checks={checks}
+        />
       ))}
     </div>
   );
 }
+
+const symbols = {
+  nomaterial: "½",
+  stalemate: "½",
+  checkmate: "#",
+};
 
 interface ChessTileCmpProps {
   chessTile: ChessTile;
@@ -99,32 +124,62 @@ interface ChessTileCmpProps {
   isSelected: boolean;
   isLegal: boolean;
   currentChessPosition: ChessBoard;
+  checks: { white: CheckType; black: CheckType };
 }
 
 function ChessTileCmp(props: ChessTileCmpProps) {
-  const { chessTile, clickCallback, isSelected, isLegal } = props;
+  const { chessTile, clickCallback, isSelected, isLegal, checks } = props;
 
   const simple = Square.simplify(chessTile.square);
   const even = (simple.file + simple.rank) % 2 == 0;
+
+  const isKing =
+    chessTile.piece !== undefined && chessTile.piece instanceof King;
+
+  const checkType = isKing ? checks[chessTile.piece!.pieceColor] : "none";
 
   const className = classNames(
     chessboardStyle.chesstile,
     even ? chessboardStyle.even : chessboardStyle.odd,
     chessTile.piece && chessboardStyle.piece,
-    isSelected && chessboardStyle.selected
+    isSelected && chessboardStyle.selected,
+    chessTile.piece && chessboardStyle[chessTile.piece.pieceColor],
+    isLegal && chessboardStyle.legalmove,
+    isKing && chessboardStyle[checkType]
   );
 
-  const img = chessTile.piece && (
-    <img
-      src={`pieces/${chessTile.piece.getFileImageName()}`}
-      draggable={false}
-    />
-  );
+  const imageRef = createRef<HTMLImageElement>();
 
   return (
-    <span className={className} onClick={() => clickCallback(chessTile)}>
-      {img}
+    <span
+      className={className}
+      onClick={() => clickCallback(chessTile)}
+      onDragStart={(evt) => {
+        clickCallback(chessTile);
+        evt.dataTransfer.setDragImage(imageRef.current!, 22.5, 22.5);
+      }}
+      onDragEnd={(evt) => {
+        console.log("drag end");
+        evt.preventDefault();
+        if (!isSelected) return;
+        clickCallback(chessTile);
+      }}
+      style={{ gridColumn: simple.file + 1, gridRow: 9 - simple.rank }}
+      draggable
+    >
+      {chessTile.piece && (
+        <img
+          ref={imageRef}
+          src={`pieces/${chessTile.piece.getFileImageName()}`}
+          draggable={false}
+        />
+      )}
       {isLegal && <span className={chessboardStyle.legalmove} />}
+      {checkType !== "none" && checkType !== "check" && (
+        <span className={chessboardStyle.symbol}>
+          <span className={chessboardStyle.text}>{symbols[checkType]}</span>
+        </span>
+      )}
     </span>
   );
 }
