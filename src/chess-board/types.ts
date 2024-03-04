@@ -2,7 +2,12 @@ export type Color = "white" | "black";
 
 type ChessFile = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h";
 type ChessRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-export type CheckType = "none" | "check" | "checkmate" | "stalemate" | "nomaterial";
+export type CheckType =
+  | "none"
+  | "check"
+  | "checkmate"
+  | "stalemate"
+  | "nomaterial";
 
 class Move {
   public readonly startingSquare: Square;
@@ -12,12 +17,15 @@ class Move {
   public readonly isEnPassant: boolean;
   public readonly isCastles: boolean;
   public readonly isDoubleStep: boolean;
+  public readonly cancelQueensideCastles: boolean;
+  public readonly cancelKingsideCastles: boolean;
   public readonly capturePiece: Piece | undefined;
   public readonly checkType: CheckType;
 
   constructor(
     board: ChessBoard,
     checkCalculation: boolean,
+    castleCalculation: boolean,
     startingSquare: Square,
     targetSquare: Square,
     movePiece: Piece,
@@ -34,6 +42,8 @@ class Move {
     this.isEnPassant = isEnpassant;
     this.isCastles = isCastles;
     this.isDoubleStep = isDoubleStep;
+    this.cancelQueensideCastles = castleCalculation && this.cancelsCastlesQueenside(board);
+    this.cancelKingsideCastles = castleCalculation && this.cancelsCastlesKingside(board);
     this.capturePiece = capturePiece;
     this.checkType = checkCalculation ? board.calculateCheckType(this) : "none";
   }
@@ -52,6 +62,14 @@ class Move {
         ? "#"
         : ""
     }`;
+  }
+
+  private cancelsCastlesKingside(board: ChessBoard) {
+    return this.movePiece instanceof King || this.movePiece instanceof Rook;
+  }
+
+  private cancelsCastlesQueenside(board: ChessBoard) {
+    return this.movePiece instanceof King || this.movePiece instanceof Rook;
   }
 }
 
@@ -121,13 +139,15 @@ abstract class Piece {
   public abstract possibleMoves(
     board: ChessBoard,
     startingSquare: Square,
-    checkCalculation: boolean
+    checkCalculation: boolean,
+    castleCalculation: boolean
   ): Move[];
   public abstract getSimpleName(): PieceLetter;
   public abstract getFileImageName(): string;
   protected checkAndAdd(
     board: ChessBoard,
     checkCalculation: boolean = true,
+    castleCalculation: boolean = true,
     startingSquare: Square,
     targetSquare: Square,
     moves: Move[]
@@ -140,6 +160,7 @@ abstract class Piece {
       const move = new Move(
         board,
         checkCalculation,
+        castleCalculation,
         startingSquare,
         targetSquare,
         this,
@@ -158,6 +179,7 @@ abstract class Piece {
     const move = new Move(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       targetSquare,
       this,
@@ -186,7 +208,8 @@ class Pawn extends Piece {
 
   private checkAndAddDiagonal(
     board: ChessBoard,
-    checkCalculation: boolean,
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true,
     startingSquare: Square,
     targetSquare: Square,
     moves: Move[]
@@ -201,6 +224,7 @@ class Pawn extends Piece {
         new Move(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           targetSquare,
           this,
@@ -227,6 +251,7 @@ class Pawn extends Piece {
           new Move(
             board,
             checkCalculation,
+            castleCalculation,
             startingSquare,
             targetSquare,
             this,
@@ -251,6 +276,7 @@ class Pawn extends Piece {
           new Move(
             board,
             checkCalculation,
+            castleCalculation,
             startingSquare,
             targetSquare,
             this,
@@ -267,7 +293,8 @@ class Pawn extends Piece {
 
   protected checkAndAdd(
     board: ChessBoard,
-    checkCalculation: boolean,
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true,
     startingSquare: Square,
     targetSquare: Square,
     moves: Move[]
@@ -280,6 +307,7 @@ class Pawn extends Piece {
       const move = new Move(
         board,
         checkCalculation,
+        castleCalculation,
         startingSquare,
         targetSquare,
         this,
@@ -299,7 +327,8 @@ class Pawn extends Piece {
   public possibleMoves(
     board: ChessBoard,
     startingSquare: Square,
-    checkCalculation: boolean = true
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true
   ): Move[] {
     const moves: Move[] = [];
     if (this.pieceColor === "white") {
@@ -307,6 +336,7 @@ class Pawn extends Piece {
         this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, 1),
           moves
@@ -316,6 +346,7 @@ class Pawn extends Piece {
         this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, 2),
           moves
@@ -324,6 +355,7 @@ class Pawn extends Piece {
       this.checkAndAddDiagonal(
         board,
         checkCalculation,
+        castleCalculation,
         startingSquare,
         startingSquare.add(1, 1),
         moves
@@ -331,6 +363,7 @@ class Pawn extends Piece {
       this.checkAndAddDiagonal(
         board,
         checkCalculation,
+        castleCalculation,
         startingSquare,
         startingSquare.add(-1, 1),
         moves
@@ -340,6 +373,7 @@ class Pawn extends Piece {
         this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, -1),
           moves
@@ -349,6 +383,7 @@ class Pawn extends Piece {
         this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, -2),
           moves
@@ -357,6 +392,7 @@ class Pawn extends Piece {
       this.checkAndAddDiagonal(
         board,
         checkCalculation,
+        castleCalculation,
         startingSquare,
         startingSquare.add(1, -1),
         moves
@@ -364,6 +400,7 @@ class Pawn extends Piece {
       this.checkAndAddDiagonal(
         board,
         checkCalculation,
+        castleCalculation,
         startingSquare,
         startingSquare.add(-1, -1),
         moves
@@ -378,7 +415,8 @@ class Rook extends Piece {
   public possibleMoves(
     board: ChessBoard,
     startingSquare: Square,
-    checkCalculation: boolean = true
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true
   ): Move[] {
     const moves: Move[] = [];
     let topDone = false,
@@ -390,6 +428,7 @@ class Rook extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, i),
           moves
@@ -400,6 +439,7 @@ class Rook extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, -i),
           moves
@@ -410,6 +450,7 @@ class Rook extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(i, 0),
           moves
@@ -420,6 +461,7 @@ class Rook extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(-i, 0),
           moves
@@ -427,8 +469,6 @@ class Rook extends Piece {
         if (!newMove || newMove.isCapture) leftDone = true;
       }
     }
-
-    //TODO: castles
 
     return moves;
   }
@@ -446,13 +486,15 @@ class Knight extends Piece {
   public possibleMoves(
     board: ChessBoard,
     startingSquare: Square,
-    checkCalculation: boolean = true
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true
   ): Move[] {
     const moves: Move[] = [];
 
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(1, 2),
       moves
@@ -460,6 +502,7 @@ class Knight extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(-1, 2),
       moves
@@ -467,6 +510,7 @@ class Knight extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(1, -2),
       moves
@@ -474,6 +518,7 @@ class Knight extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(-1, -2),
       moves
@@ -481,6 +526,7 @@ class Knight extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(2, 1),
       moves
@@ -488,6 +534,7 @@ class Knight extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(2, -1),
       moves
@@ -495,6 +542,7 @@ class Knight extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(-2, 1),
       moves
@@ -502,6 +550,7 @@ class Knight extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(-2, -1),
       moves
@@ -521,7 +570,8 @@ class Bishop extends Piece {
   public possibleMoves(
     board: ChessBoard,
     startingSquare: Square,
-    checkCalculation: boolean = true
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true
   ): Move[] {
     const moves: Move[] = [];
     let topRightDone = false,
@@ -533,6 +583,7 @@ class Bishop extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(i, i),
           moves
@@ -543,6 +594,7 @@ class Bishop extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(i, -i),
           moves
@@ -553,6 +605,7 @@ class Bishop extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(-i, i),
           moves
@@ -563,6 +616,7 @@ class Bishop extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(-i, -i),
           moves
@@ -589,7 +643,8 @@ class Queen extends Piece {
   public possibleMoves(
     board: ChessBoard,
     startingSquare: Square,
-    checkCalculation: boolean = true
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true
   ): Move[] {
     const moves: Move[] = [];
     let topDone = false,
@@ -605,6 +660,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, i),
           moves
@@ -615,6 +671,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(0, -i),
           moves
@@ -625,6 +682,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(i, 0),
           moves
@@ -635,6 +693,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(-i, 0),
           moves
@@ -645,6 +704,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(i, i),
           moves
@@ -655,6 +715,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(i, -i),
           moves
@@ -665,6 +726,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(-i, i),
           moves
@@ -675,6 +737,7 @@ class Queen extends Piece {
         const newMove = this.checkAndAdd(
           board,
           checkCalculation,
+          castleCalculation,
           startingSquare,
           startingSquare.add(-i, -i),
           moves
@@ -700,13 +763,15 @@ export class King extends Piece {
   public possibleMoves(
     board: ChessBoard,
     startingSquare: Square,
-    checkCalculation: boolean = true
+    checkCalculation: boolean = true,
+    castleCalculation: boolean = true
   ): Move[] {
     const moves: Move[] = [];
 
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(-1, -1),
       moves
@@ -714,6 +779,7 @@ export class King extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(-1, 0),
       moves
@@ -721,6 +787,7 @@ export class King extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(-1, 1),
       moves
@@ -728,6 +795,7 @@ export class King extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(0, -1),
       moves
@@ -735,6 +803,7 @@ export class King extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(0, 1),
       moves
@@ -742,6 +811,7 @@ export class King extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(1, -1),
       moves
@@ -749,6 +819,7 @@ export class King extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(1, 0),
       moves
@@ -756,12 +827,75 @@ export class King extends Piece {
     this.checkAndAdd(
       board,
       checkCalculation,
+      castleCalculation,
       startingSquare,
       startingSquare.add(1, 1),
       moves
     );
 
+    this.checkAndAddKingSide(board, startingSquare, moves, checkCalculation, castleCalculation);
+    this.checkAndAddQueenSide(board, startingSquare, moves, checkCalculation, castleCalculation);
+
     return moves;
+  }
+
+  private checkAndAddQueenSide(
+    board: ChessBoard,
+    startingSquare: Square,
+    moves: Move[],
+    checkCalculation: boolean,
+    castleCalculation: boolean
+  ) {
+    if (!this.canCastleQueen) return;
+
+    for (let file = -1; file >= -3; file--) {
+      const tile = board.getTile(startingSquare.add(file, 0));
+      if (tile!.piece) return;
+    }
+
+    moves.push(
+      new Move(
+        board,
+        checkCalculation,
+        castleCalculation,
+        startingSquare,
+        startingSquare.add(-2, 0),
+        this,
+        false,
+        false,
+        true,
+        false
+      )
+    );
+  }
+  private checkAndAddKingSide(
+    board: ChessBoard,
+    startingSquare: Square,
+    moves: Move[],
+    checkCalculation: boolean,
+    castleCalculation: boolean
+  ) {
+    if (!this.canCastleKing) return;
+
+    for (let file = 1; file <= 2; file++) {
+      const tile = board.getTile(startingSquare.add(file, 0));
+      if (tile!.piece) return;
+    }
+
+    moves.push(
+      new Move(
+        board,
+        checkCalculation,
+        castleCalculation,
+        startingSquare,
+        startingSquare.add(2, 0),
+        this,
+        false,
+        false,
+        true,
+        false
+      )
+    );
   }
 
   public getSimpleName(): PieceLetter {
@@ -874,6 +1008,13 @@ export class ChessBoard {
       }
     }
 
+    if (sections[3] !== "-") {
+      const file = Number(sections[3]);
+      const rank = turn === "white" ? 4 : 5;
+      const pawn = ranks[rank][file].piece as Pawn;
+      pawn.doubleStep = true;
+    }
+
     return new ChessBoard(ranks, turn, whiteKingPosition, blackKingPosition);
   }
 
@@ -923,6 +1064,29 @@ export class ChessBoard {
       }
     }
 
+    if (move.cancelQueensideCastles) {
+      this.getKing(this.turn).canCastleQueen = false;
+    }
+    if (move.cancelKingsideCastles) {
+      this.getKing(this.turn).canCastleKing = false;
+      console.log("canceled kingside castles");
+    }
+
+    if (move.isCastles) {
+      const targetFile = move.targetSquare.file!;
+      if (targetFile == "c") {
+        const rookStartTile = this.getTile(move.startingSquare.add(-4, 0))!;
+        const rookEndTile = this.getTile(move.startingSquare.add(-1, 0))!;
+        rookEndTile.piece = rookStartTile.piece;
+        rookStartTile.piece = undefined;
+      } else {
+        const rookStartTile = this.getTile(move.startingSquare.add(3, 0))!;
+        const rookEndTile = this.getTile(move.startingSquare.add(1, 0))!;
+        rookEndTile.piece = rookStartTile.piece;
+        rookStartTile.piece = undefined;
+      }
+    }
+
     this.changeTurn();
     this.history.push(move);
   }
@@ -958,6 +1122,28 @@ export class ChessBoard {
           this.whiteKingTile = startingTile;
         }
       }
+
+      if (move.cancelQueensideCastles) {
+        this.getKing(this.turn).canCastleQueen = true;
+      }
+      if (move.cancelKingsideCastles) {
+        this.getKing(this.turn).canCastleKing = true;
+      }
+
+      if (move.isCastles) {
+        const targetFile = move.targetSquare.file!;
+        if (targetFile == "c") {
+          const rookStartTile = this.getTile(move.startingSquare.add(-4, 0))!;
+          const rookEndTile = this.getTile(move.startingSquare.add(-1, 0))!;
+          rookStartTile.piece = rookEndTile.piece;
+          rookEndTile.piece = undefined;
+        } else {
+          const rookStartTile = this.getTile(move.startingSquare.add(3, 0))!;
+          const rookEndTile = this.getTile(move.startingSquare.add(1, 0))!;
+          rookStartTile.piece = rookEndTile.piece;
+          rookEndTile.piece = undefined;
+        }
+      }
     }
 
     if (move.isDoubleStep) {
@@ -983,12 +1169,14 @@ export class ChessBoard {
   public getLegalMoves(
     selectedTile: ChessTile,
     checkCalculation: boolean = true,
-    illegalCalculation: boolean = true
+    illegalCalculation: boolean = true,
+    castleCalculation: boolean = true
   ) {
     const moves = selectedTile.piece!.possibleMoves(
       this,
       selectedTile.square,
-      checkCalculation
+      checkCalculation,
+      castleCalculation
     );
     if (!illegalCalculation) return moves;
 
@@ -1021,14 +1209,15 @@ export class ChessBoard {
 
   public getAllLegalMoves(
     checkCalculation: boolean = true,
-    illegalCalculation: boolean = true
+    illegalCalculation: boolean = true,
+    castleCalculation: boolean = true
   ) {
     const moves: Move[] = [];
     this.getAllPieceTiles()
       .filter((tile) => tile.piece!.pieceColor === this.turn)
       .forEach((tile) => {
         moves.push(
-          ...this.getLegalMoves(tile, checkCalculation, illegalCalculation)
+          ...this.getLegalMoves(tile, checkCalculation, illegalCalculation, castleCalculation)
         );
       });
 
@@ -1047,9 +1236,12 @@ export class ChessBoard {
   public calculateCheckType(move: Move): CheckType {
     this.makeMove(move);
 
-    const isMate = this.getAllLegalMoves(false).length === 0;
+    console.log(move.toString());
+    const isMate = this.getAllLegalMoves(false, true, false).length === 0;
     const isCheck = this.isInCheck();
-    const noMat = !this.getAllPieceTiles().some(tile => !(tile.piece instanceof King));
+    const noMat = !this.getAllPieceTiles().some(
+      (tile) => !(tile.piece instanceof King)
+    );
 
     this.undoLastMove();
 

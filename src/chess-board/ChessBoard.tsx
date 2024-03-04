@@ -54,6 +54,7 @@ export function ChessBoardCmp(props: ChessBoardCmpProps) {
   );
 
   function onTileClicked(clickedTile: ChessTile) {
+    if(clickedTile.piece) console.log(clickedTile.piece);
     if (
       currentSelectedPosition &&
       selectedLegalMoves?.find((move) =>
